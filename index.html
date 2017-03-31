@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Area-convexity</title>
+	<link rel="stylesheet" type="text/css" href="public/css/bootstrap.min.css">
+	<link rel="stylesheet" type="text/css" href="public/css/styles.css">
+</head>
+<body>
+
+	<div class="container">
+		<div class="row">
+
+			<div class="row">
+				<h1 class="text text-info text-center">Drawing of polygonal area</h1>				
+			</div><hr>
+
+			<div class="row">
+				<div class="col-md-offset-3">
+					<div class="col-md-3">
+						<span>
+							<button class="btn btn-default pull-left" name="area" id="area">get area value</button>
+							<label class="text text-center" id="areaValue"></label>
+						</span>
+					</div>
+					<div class="col-md-3">
+						<span>
+							<button class="btn btn-primary" name="convex" id="convex" onclick="gotConvex()">is it convex ???</button>
+							<label class="text text-center" id="areaConv"></label>
+						</span>
+					</div>
+					<div class="col-md-3">
+						<button class="btn btn-info" name="clear" id="clear">clear</button>
+					</div>
+				</div>
+			</div><hr>
+
+			<div class="row">
+				<div class="col-md-3">
+					<table class="table table-hover table-stripped table-condensed" id="coords"></table>
+					
+				</div>
+
+				<div class="col-md-offset-3">
+					<div class="row" id="rowCan">
+						<canvas id="canvas" width="600" height="600">
+							
+						</canvas>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script type="text/javascript" src="public/js/jquery.min.js"></script>
+	<script type="text/javascript" src="public/js/bootstrap.min.js"></script>
+
+	<script type="text/javascript">
+
+		//radius of click around the first point to close the draw
+		var END_CLICK_RADIUS = 5;
+
+		var mouseX = 0;
+		var mouseY = 0;
+
+		var isStarted = false;
+		var coords = null;//contains point coordinates of the polygone - using for canvas design -
+		var realCoords = null; //the real coordinates in the new orthonormal system
+		var crossPs = null; //array of cross Product.
+
+		var btnArea = document.getElementById("area");
+		var canvas = document.getElementById('canvas'); //used for modified the canvas's content
+		var context = canvas.getContext("2d");//variable used for drawing
+
+		window.onload = function () {
+
+			canvas.addEventListener("click", function (e) {
+				var x = e.clientX-canvas.offsetLeft;
+				var y = e.clientY-canvas.offsetTop;
+
+				if (isStarted){
+				   //drawing next lines and closing the polygon is needed
+					if(Math.abs(x - coords[0].x) < END_CLICK_RADIUS && Math.abs(y - coords[0].y) < END_CLICK_RADIUS) {
+						isStarted = false;
+						canvas.style.cursor = "default";
+
+						var coordsTable = document.getElementById("coords");
+						var contain = "<thead class=\"text text-info\">\
+							<tr><th>Points</th><th>x</th><th>y</th></tr>\
+							</thead>";
+						contain += "<tbody>";
+						for (var i = 0; i < realCoords.length; i++) {
+							contain += "<tr>";
+							contain += "<td>"+(i+1)+"</td>" + "<td>"+Math.round(realCoords[i].x*1000)/1000+"</td>" + "<td>"+Math.round(realCoords[i].y*1000)/1000+"</td>";
+							contain += "</tr>";
+						}
+						contain += "</tbody>";
+
+						coordsTable.innerHTML = contain;
+					}
+					else
+					{
+						coords[coords.length] = new Point(x, y);
+						realCoords[realCoords.length] = new Point((x - canvas.width/2)/3, (canvas.height/2 - y)/3);
+					}
+				} else if(coords == null) {
+					//opening the polygon
+					coords = new Array();
+					coords[0] = new Point(x, y);
+
+					realCoords = new Array();
+					realCoords[0] = new Point((x - canvas.width/2)/3, (canvas.height/2 - y)/3);
+
+					crossPs = new Array();
+					isStarted = true;
+
+					//change cursor when drawing
+					canvas.style.cursor = "crosshair";
+				}
+			}, false);
+
+			//save the location of the mouse
+			canvas.addEventListener("mousemove", function (e) {
+				mouseX = e.clientX - canvas.offsetLeft;
+				mouseY = e.clientY - canvas.offsetTop;
+			}, false);
+
+			/*event responding for click on button which calculates the area
+			It's doing in the same time the drawing of triangles
+			*/
+			btnArea.addEventListener("click", function (e) {
+				console.log(realCoords);
+				var area = 0;
+				if (realCoords!=null) {
+					for (var i = 2; i<realCoords.length;i++) {
+						area += triangleArea(realCoords[0], realCoords[i], realCoords[i-1]);
+					}
+
+					crossPs = crossProducts();//cross products of all angles - using for convexity test -
+					var mArea = minusArea();
+					area -= mArea;
+
+					document.getElementById("areaValue").innerHTML = area;
+					drawingTriangles();
+				}
+				else
+					alert("There is no draw on the graph");
+			}, false);
+
+			//refresh time
+			setInterval("draw();", 100);
+
+		}
+
+		//object which represents a point
+		function Point(x, y) {
+			this.x = x;
+			this.y = y;
+		}
+
+		//reset the app
+		function reset() {
+			isStarted = false;
+			coords = null;
+			realCoords = null;
+			crossPs = null;
+			document.getElementById("areaValue").innerHTML = "";
+			document.getElementById("coords").innerHTML = "";
+			document.getElementById("areaConv").className = "";
+		}
+
+		//draws the current chape
+		function draw() {
+			if (isStarted) {
+				initialize();
+			}
+			context.beginPath();
+
+			if(coords != null && coords.length > 0) {
+				context.moveTo(coords[0].x, coords[0].y);
+				
+				for(i = 1 ; i < coords.length ; i++) {
+					context.lineTo(coords[i].x, coords[i].y);
+				}
+				
+				if(isStarted) {
+					context.lineTo(mouseX, mouseY);
+				} else {
+					context.lineTo(coords[0].x, coords[0].y);
+				}
+			}
+			
+			context.stroke();
+		}
+
+		//function which doing the orthonormal coordinate system
+		function initialize(){
+			var widthCanvas = parseInt(canvas.getAttribute('width'));
+			var heightCanvas = parseInt(canvas.getAttribute('height'));
+
+			context.clearRect(0, 0, canvas.width, canvas.height);
+
+			context.strokeStyle = "rgb(0, 0, 0)";//choose black color for drawing orthonormal cordinate system
+
+			context.beginPath();
+			context.moveTo(widthCanvas/2, 0);
+			context.lineTo(widthCanvas/2, heightCanvas);
+			context.closePath();
+			context.stroke();
+
+			context.beginPath();
+			context.moveTo(0, heightCanvas/2);
+			context.lineTo(widthCanvas, heightCanvas/2);
+			context.closePath();
+			context.stroke();
+
+			//With this cordinate system 100 => 300
+
+			//Drawing x coordinates
+			context.fillStyle = "red";
+			var i = 0;
+			while(i<=widthCanvas) {
+				context.fillRect(i, heightCanvas/2, 1, 3);
+				context.font = "bold 8pt Calibri,Geneva,Arial";
+				context.fillStyle = "blue";
+				var num = (i - 300)/3;
+				context.fillText(num.toString(), i, heightCanvas/2 + 8);
+				context.fillStyle = "red";
+				i+=30;
+			}
+
+			//Drawing y coordinates
+			i = 0;
+			while(i<=heightCanvas) {
+				context.fillRect(widthCanvas/2, i, 3, 1);
+				context.font = "bold 8pt Calibri,Geneva,Arial";
+				context.fillStyle = "blue";
+				var num = (300-i)/3;
+				if (num!=0)
+					context.fillText(num.toString(), widthCanvas/2+8, i);
+
+				context.fillStyle = "red";
+				i+=30;
+			}
+		}
+
+		/*calculate triangle's area
+			a, b and c constituate the triangle. 
+			They're Point type
+		*/
+		function triangleArea(a, b, c) {
+			var result = 0.5*((b.x*c.y - c.x*b.y) + (c.x*a.y - a.x*c.y) + (a.x*b.y - b.x*a.y));//formule which calculate the triangle area
+			if (result<0)
+				return -result;
+
+			return result;
+		}
+
+		/* calculate the cross product a*b
+			The cross product is a vector perpendicular to AB
+			 and BC having length |AB| * |BC| * Sin(theta) and
+			with direction given by the right-hand rule.
+			For two vectors in the X-Y plane, the result is a
+			vector with X and Y components 0 so the Z component
+			gives the vector's length and direction
+		*/
+		function crossProduct(a, b, c) {
+			// Get the vectors' coordinates.
+		    var BAx = a.x - b.x;
+		    var BAy = a.y - b.y;
+		    var BCx = c.x - b.x;
+		    var BCy = c.y - b.y;
+
+		    // Calculate the Z coordinate of the cross product.
+		    return (BAx * BCy - BAy * BCx);
+		}
+
+		/*calculate the area of the entire polygon
+			this function does the sum of the all triangles which constituate the polygon
+			- this value represent the area -
+		
+		function getArea() {
+			console.log(realCoords);
+			var area = 0;
+			if (realCoords!=null) {
+				for (var i = 2; i<realCoords.length;i++) {
+					area += triangleArea(realCoords[0], realCoords[i], realCoords[i-1]);
+				}
+
+				crossPs = crossProducts();//cross products of all angles - using for convexity test -
+				var mArea = minusArea();
+				area -= mArea;
+
+				document.getElementById("areaValue").innerHTML = area;
+			}
+			else
+				alert("There is no draw on the graph");
+		}*/
+
+		/*
+			function which verify if the polygon is convex or not
+			It calculate the angle of each point and test if these value is grater than pi/2
+			pi = 22/7
+		*/
+		function isConvex() {
+			// For each set of three adjacent points A, B, C,
+		    // find the cross product AB · BC. If the sign of
+		    // all the cross products is the same, the angles
+		    // are all positive or negative (depending on the
+		    // order in which we visit them) so the polygon
+		    // is convex.
+		    var isNegative = false;
+		    var isPositive = false;
+
+			for (var i = 0; i <realCoords.length; i++) {
+				var crossP;
+				if (i==0) {
+					crossP = crossProduct(realCoords[realCoords.length-1], realCoords[i], realCoords[i+1]);
+				}
+				else if (i==realCoords.length-1) {
+					crossP = crossProduct(realCoords[i-1], realCoords[i], realCoords[0]);
+				}
+				else{
+					crossP = crossProduct(realCoords[i-1], realCoords[i], realCoords[i+1]);
+				}
+
+				if (crossP<0) {
+					isNegative = true;
+				}
+				else if (crossP>0) {
+					isPositive = true;
+				}
+
+				//test for convexity
+				if (isNegative && isPositive) {
+					return false;
+				}
+
+			}
+
+			return true;
+
+		}
+
+		//function called for appending the result of convexity test
+		function gotConvex() {
+			if (realCoords!=null) {
+				if (isConvex()) {
+					document.getElementById("areaConv").className = "text text-success glyphicon glyphicon-ok";
+				}
+				else {
+					crossPs = crossProducts();
+					console.log(crossPs);
+					drawNotConvex();
+					minusArea();//for testing
+					document.getElementById("areaConv").className = "text text-danger glyphicon glyphicon-remove";
+				}
+			}
+			else
+				alert("There is no draw on the graph")
+		}
+
+		//return the crossProduct array without doing test
+		function crossProducts() {
+			var crossPds = new Array();
+
+			for (var i = 0; i <realCoords.length; i++) {
+				if (i==0) {
+					crossPds[i] = crossProduct(realCoords[realCoords.length-1], realCoords[i], realCoords[i+1]);
+				}
+				else if (i==realCoords.length-1) {
+					crossPds[i] = crossProduct(realCoords[i-1], realCoords[i], realCoords[0]);
+				}
+				else{
+					crossPds[i] = crossProduct(realCoords[i-1], realCoords[i], realCoords[i+1]);
+				}
+
+			}
+
+
+			return crossPds;
+		}
+
+		//drawing function which show in the graph that polygon is concave (non convexe)
+		function drawNotConvex() {
+			context.strokeStyle = "rgb(255,0,0)";
+			context.font = "bold 8pt Calibri,Geneva,Arial";
+			for (var i = 0; i < crossPs.length; i++) {
+				if (realCoords[0].x<realCoords[1].x){
+					if (crossPs[i]<=0) {
+						context.beginPath();
+						
+						if (i==0) {
+							context.moveTo(coords[coords.length-1].x, coords[coords.length-1].y);
+							context.lineTo(coords[i+1].x, coords[i+1].y);
+						}
+						else if (i==realCoords.length-1) {
+							context.moveTo(coords[0].x, coords[0].y);
+							context.lineTo(coords[i-1].x, coords[i-1].y);
+						}
+						else{
+							context.moveTo(coords[i-1].x, coords[i-1].y);
+							context.lineTo(coords[i+1].x, coords[i+1].y);
+						}
+						context.closePath();
+						context.stroke();
+
+					}
+				}
+				else {
+					if (crossPs[i]>0) {
+						context.beginPath();
+						
+						if (i==0) {
+							context.moveTo(coords[coords.length-1].x, coords[coords.length-1].y);
+							context.lineTo(coords[i+1].x, coords[i+1].y);
+						}
+						else if (i==realCoords.length-1) {
+							context.moveTo(coords[0].x, coords[0].y);
+							context.lineTo(coords[i-1].x, coords[i-1].y);
+						}
+						else{
+							context.moveTo(coords[i-1].x, coords[i-1].y);
+							context.lineTo(coords[i+1].x, coords[i+1].y);
+						}
+						context.closePath();
+						context.stroke();
+
+					}
+				}
+			}
+
+			context.strokeStyle = "rgb(0,0,0)";
+			context.font = "bold 8pt Calibri,Geneva,Arial";
+
+			for (var i = 0; i <coords.length; i++) {
+				context.beginPath();
+				if (i==coords.length-1) {
+					context.moveTo(coords[i].x, coords[i].y);
+					context.lineTo(coords[0].x, coords[0].y);
+				}
+				else {
+					context.moveTo(coords[i].x, coords[i].y);
+					context.lineTo(coords[i+1].x, coords[i+1].y);
+				}
+				context.closePath();
+				context.stroke();
+			}
+
+		}
+
+		/* this function calculate the total area that does not contained in the domain
+			- case of non convexe domain-
+		*/
+		function minusArea() {
+			var mArea = 0;
+			if (!isConvex()) {
+				if (realCoords[0].x<realCoords[1].x) {
+					for (var i = 0; i <crossPs.length; i++) {
+						if (crossPs[i]<=0) {
+							if (i==0) {
+								mArea += triangleArea(realCoords[realCoords.length-1], realCoords[i], realCoords[i+1]);
+							}
+							else if (i==crossPs.length-1) {
+								mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[0]);
+							}
+							else{
+								mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[i+1]);
+							}
+						}
+					}
+				}
+
+				else {
+					for (var i = 0; i <crossPs.length; i++) {
+						if (crossPs[i]>0) {
+							if (i==0) {
+								mArea += triangleArea(realCoords[realCoords.length-1], realCoords[i], realCoords[i+1]);
+							}
+							else if (i==crossPs.length-1) {
+								mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[0]);
+							}
+							else{
+								mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[i+1]);
+							}
+						}
+					}
+				}
+			}
+
+			console.log("Minus area :"+mArea);
+			return mArea;
+		}
+
+		/* this function does the coloring of triangles which constituate the polygon area
+		*/
+		function drawingTriangles() {
+			context.font = "bold 8pt Calibri,Geneva,Arial";
+			var r = 0, g = 0, b = 0;//there are the three composant of rgb coloring system
+			for (var i = 2; i<realCoords.length;i++) {
+				context.fillStyle = "#"+(r).toString(16)+(g).toString(16)+(b).toString(16);;
+
+				context.beginPath();
+				context.moveTo(coords[0].x, coords[0].y);
+				context.lineTo(coords[i].x, coords[i].y);
+				context.lineTo(coords[i-1].x, coords[i-1].y);
+				context.closePath();
+				context.stroke();
+				context.fill();				
+
+				//changing color
+				r = (r+5)%255;
+				g += (g+5)%255;
+				b += (b+5)%255;
+
+			}
+
+			//Additionnal deletion to do for a concave area -no convex -
+			if (!isConvex()) {
+				context.fillStyle = "#ADD8E6";
+				if (realCoords[0].x<realCoords[1].x) {
+					for (var i = 0; i <crossPs.length; i++) {
+						context.beginPath();
+						if (crossPs[i]<=0) {
+							if (i==0) {
+								context.moveTo(coords[coords.length-1].x, coords[coords.length-1].y);
+								context.lineTo(coords[i].x, coords[i].y);
+								context.lineTo(coords[i+1].x, coords[i+1].y);
+								//mArea += triangleArea(realCoords[realCoords.length-1], realCoords[i], realCoords[i+1]);
+							}
+							else if (i==crossPs.length-1) {
+								context.moveTo(coords[i-1].x, coords[i-1].y);
+								context.lineTo(coords[i].x, coords[i].y);
+								context.lineTo(coords[0].x, coords[0].y);
+								//mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[0]);
+							}
+							else{
+								context.moveTo(coords[i-1].x, coords[i-1].y);
+								context.lineTo(coords[i].x, coords[i].y);
+								context.lineTo(coords[i+1].x, coords[i+1].y);
+								//mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[i+1]);
+							}
+						}
+						context.closePath();
+						context.stroke();
+						context.fill();
+					}
+				}
+
+				else {
+					for (var i = 0; i <crossPs.length; i++) {
+						context.beginPath();
+						if (crossPs[i]>0) {
+							if (i==0) {
+								context.moveTo(coords[coords.length-1].x, coords[coords.length-1].y);
+								context.lineTo(coords[i].x, coords[i].y);
+								context.lineTo(coords[i+1].x, coords[i+1].y);
+								//mArea += triangleArea(realCoords[realCoords.length-1], realCoords[i], realCoords[i+1]);
+							}
+							else if (i==crossPs.length-1) {
+								context.moveTo(coords[i-1].x, coords[i-1].y);
+								context.lineTo(coords[i].x, coords[i].y);
+								context.lineTo(coords[0].x, coords[0].y);
+								//mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[0]);
+							}
+							else{
+								context.moveTo(coords[i-1].x, coords[i-1].y);
+								context.lineTo(coords[i].x, coords[i].y);
+								context.lineTo(coords[i+1].x, coords[i+1].y);
+								//mArea += triangleArea(realCoords[i-1], realCoords[i], realCoords[i+1]);
+							}
+						}
+						context.closePath();
+						context.stroke();
+						context.fill();
+					}
+				}
+			}
+		}
+
+
+		jQuery(document).ready(function () {
+
+			initialize();//first drawing
+
+			//reinitialize the graphs
+			jQuery("#clear").click(function () {
+				reset();
+				initialize();
+			});
+
+		});
+	</script>
+</body>
+</html>
